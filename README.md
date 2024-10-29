@@ -1,5 +1,7 @@
 # Mindflow
 
+![Mindflow Teaser](./mindflow.png)
+
 A minimalist personal productivity companion that helps you track habits, manage tasks, and maintain focus - all while keeping your data local and private.
 
 This is a Work in Progress project, set to change a lot.
