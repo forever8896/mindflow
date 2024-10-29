@@ -9,6 +9,8 @@
   import Evolution from '../components/Evolution.svelte';
   import Pomodoro from '../components/Pomodoro.svelte';
   import Journal from '../components/Journal.svelte';
+  import Counters from '../components/Counters.svelte';
+  import { fade } from 'svelte/transition';
   
   let activeSection = 'Todo';
   let journalComponent: Journal;
@@ -28,15 +30,29 @@
   
   <main class="content">
     {#if activeSection === 'Todo'}
-      <TodoList />
+      <div transition:fade={{ duration: 200 }}>
+        <TodoList />
+      </div>
     {:else if activeSection === 'Notes'}
-      <Notes />
+      <div transition:fade={{ duration: 200 }}>
+        <Notes />
+      </div>
     {:else if activeSection === 'Evolution'}
-      <Evolution />
+      <div transition:fade={{ duration: 200 }}>
+        <Evolution />
+      </div>
     {:else if activeSection === 'Pomodoro'}
-      <Pomodoro />
+      <div transition:fade={{ duration: 200 }}>
+        <Pomodoro />
+      </div>
     {:else if activeSection === 'Journal'}
-      <Journal bind:this={journalComponent} />
+      <div transition:fade={{ duration: 200 }}>
+        <Journal bind:this={journalComponent} />
+      </div>
+    {:else if activeSection === 'Counters'}
+      <div transition:fade={{ duration: 200 }}>
+        <Counters />
+      </div>
     {/if}
   </main>
 </div>
@@ -91,11 +107,23 @@
   .app-container {
     display: flex;
     height: 100vh;
+    position: relative;
   }
 
   .content {
     flex-grow: 1;
-    padding: 2rem;
+    position: relative;
     overflow-y: auto;
+  }
+
+  .content > div {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    padding: 2rem;
+    box-sizing: border-box;
+    min-height: 100%;
   }
 </style>

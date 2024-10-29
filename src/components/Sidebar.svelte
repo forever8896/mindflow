@@ -12,7 +12,7 @@
       dispatch('sectionChange', section);
     }
   
-    const sections = ['Todo', 'Notes', 'Evolution', 'Pomodoro', 'Journal'];
+    const sections = ['Todo', 'Notes', 'Evolution', 'Pomodoro', 'Counters', 'Journal'];
 
     let fileOpenMessage = ''; 
     let messageTimeout: number;

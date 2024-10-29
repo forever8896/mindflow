@@ -70,6 +70,17 @@ struct PomodoroSession {
     completed_at: DateTime<Utc>,
 }
 
+// Define the structure of a counter
+#[derive(Clone, Serialize, Deserialize, Debug)]
+struct Counter {
+    id: usize,
+    name: String,
+    value: i32,
+    created_at: DateTime<Utc>,
+    updated_at: DateTime<Utc>,
+}
+
+
 // Define the structure of app data
 #[derive(Clone, Serialize, Deserialize, Debug)]
 struct AppData {
@@ -78,7 +89,8 @@ struct AppData {
     goals: Vec<Goal>,
     pomodoro: PomodoroState,
     journal_entries: Vec<JournalEntry>,
-    pomodoro_sessions: Vec<PomodoroSession>,  // Add this line
+    pomodoro_sessions: Vec<PomodoroSession>, 
+    counters: Vec<Counter>,
 }
 
 // Wrapper struct for a thread-safe AppData
@@ -108,7 +120,20 @@ fn load_app_data() -> Result<AppData, Box<dyn std::error::Error>> {
     let path = get_data_file_path();
     if path.exists() {
         let json = fs::read_to_string(&path)?;
-        let app_data: AppData = serde_json::from_str(&json)?;
+        
+        // First, try to parse the JSON into a Value to check its structure
+        let mut value: serde_json::Value = serde_json::from_str(&json)?;
+        
+        // Check if counters field exists, if not, add it
+        if !value.as_object().unwrap().contains_key("counters") {
+            value.as_object_mut().unwrap().insert(
+                "counters".to_string(),
+                serde_json::Value::Array(Vec::new())
+            );
+        }
+        
+        // Now try to convert the modified JSON into AppData
+        let app_data: AppData = serde_json::from_value(value)?;
         Ok(app_data)
     } else {
         Ok(AppData {
@@ -124,7 +149,8 @@ fn load_app_data() -> Result<AppData, Box<dyn std::error::Error>> {
                 start_time: 0,
             },
             journal_entries: Vec::new(),
-            pomodoro_sessions: Vec::new(),  // Add this line
+            pomodoro_sessions: Vec::new(),
+            counters: Vec::new(),
         })
     }
 }
@@ -410,6 +436,9 @@ fn reset_pomodoro(state: State<AppState>) -> Result<PomodoroState, String> {
 
 
 
+
+
+
 #[tauri::command]
 fn get_data_file_path_string() -> String {
     get_data_file_path().to_str().unwrap_or("").to_string()
@@ -545,6 +574,88 @@ fn get_pomodoro_sessions(state: State<AppState>) -> Vec<PomodoroSession> {
     app_data.pomodoro_sessions.clone()
 }
 
+#[tauri::command]
+fn add_counter(state: State<AppState>, name: String) -> Result<Vec<Counter>, String> {
+    let mut app_data = state.0.lock().unwrap();
+    // Generate new ID based on the maximum existing ID + 1
+    let new_id = app_data.counters
+        .iter()
+        .map(|c| c.id)
+        .max()
+        .unwrap_or(0) + 1;
+    
+    let now = Utc::now();
+    
+    app_data.counters.push(Counter {
+        id: new_id,
+        name: name.clone(),
+        value: 0,
+        created_at: now,
+        updated_at: now,
+    });
+    
+    match save_app_data(&app_data) {
+        Ok(_) => {
+            info!("Added new counter: {}", name);
+            Ok(app_data.counters.clone())
+        },
+        Err(e) => {
+            error!("Failed to save app data after adding counter: {}", e);
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+fn increment_counter(state: State<AppState>, id: usize) -> Result<Vec<Counter>, String> {
+    let mut app_data = state.0.lock().unwrap();
+    
+    // First, find the counter and increment it
+    let counter_name = match app_data.counters.iter_mut().find(|c| c.id == id) {
+        Some(counter) => {
+            counter.value += 1;
+            counter.updated_at = Utc::now();
+            counter.name.clone()  // Store the name for logging
+        },
+        None => return Err("Counter not found".to_string()),
+    };
+
+    // Now save the data (no more mutable references being held)
+    match save_app_data(&app_data) {
+        Ok(_) => {
+            info!("Incremented counter {}", counter_name);
+            Ok(app_data.counters.clone())
+        },
+        Err(e) => {
+            error!("Failed to save app data after incrementing counter: {}", e);
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
+fn get_counters(state: State<AppState>) -> Vec<Counter> {
+    let app_data = state.0.lock().unwrap();
+    info!("Returning {} counters", app_data.counters.len());
+    app_data.counters.clone()
+}
+
+#[tauri::command]
+fn delete_counter(state: State<AppState>, id: usize) -> Result<Vec<Counter>, String> {
+    let mut app_data = state.0.lock().unwrap();
+    app_data.counters.retain(|counter| counter.id != id);
+    match save_app_data(&app_data) {
+        Ok(_) => {
+            info!("Deleted counter with id: {}", id);
+            Ok(app_data.counters.clone())
+        },
+        Err(e) => {
+            error!("Failed to save app data after deleting counter: {}", e);
+            Err(e.to_string())
+        }
+    }
+}
+
 fn main() {
     // Initialize logger for debug builds
     #[cfg(debug_assertions)]
@@ -577,7 +688,8 @@ fn main() {
                 start_time: 0,
             },
             journal_entries: Vec::new(),
-            pomodoro_sessions: Vec::new(),  // Add this line
+            pomodoro_sessions: Vec::new(),
+            counters: Vec::new(),
         }
     });
 
@@ -595,7 +707,10 @@ fn main() {
             add_journal_entry,
             get_journal_entries,
             get_journal_entry_for_date,
-            
+            add_counter,
+            increment_counter,
+            get_counters,
+            delete_counter,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

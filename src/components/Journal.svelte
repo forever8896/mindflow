@@ -14,6 +14,7 @@
   let allJournalEntries: any[] = [];
   let selectedEntryDate = formattedDate;
   let pomodoroSessions: any[] = [];  // Add this line
+  let counters: any[] = [];  // Add counters to the data load
 
   // Add event bus for real-time updates
   let unsubscribeInterval: number;
@@ -35,12 +36,13 @@
 
   async function loadData() {
     // Load data first
-    const [newTodos, newGoals, newNotes, newJournalEntries, newPomodoroSessions]: any[] = await Promise.all([
+    const [newTodos, newGoals, newNotes, newJournalEntries, newPomodoroSessions, newCounters]: any[] = await Promise.all([
       invoke('get_todos'),
       invoke('get_goals'),
       invoke('get_notes'),
       invoke('get_journal_entries'),
-      invoke('get_pomodoro_sessions')  // Add this line
+      invoke('get_pomodoro_sessions'),
+      invoke('get_counters')  // Add counters to the data load
     ]);
 
     // Check if any data has actually changed
@@ -48,13 +50,15 @@
       JSON.stringify(todos) !== JSON.stringify(newTodos) ||
       JSON.stringify(goals) !== JSON.stringify(newGoals) ||
       JSON.stringify(notes) !== JSON.stringify(newNotes) ||
-      JSON.stringify(pomodoroSessions) !== JSON.stringify(newPomodoroSessions);  // Add this line
+      JSON.stringify(pomodoroSessions) !== JSON.stringify(newPomodoroSessions) ||
+      JSON.stringify(counters) !== JSON.stringify(newCounters);  // Add counters to hasDataChanged check
 
     // Update our data
     todos = newTodos;
     goals = newGoals;
     notes = newNotes;
     pomodoroSessions = newPomodoroSessions;  // Add this line
+    counters = newCounters;
     
     // Sort and deduplicate journal entries
     allJournalEntries = newJournalEntries
@@ -68,7 +72,7 @@
     // Update completed todos for the selected date
     completedTodos = todos.filter(todo => 
       todo.completed && 
-      format(parseISO(todo.updated_at), 'yyyy-MM-dd') === formattedDate
+      format(parseISO(todo.updated_at), 'yyyy-MM-dd') === format(currentDate, 'yyyy-MM-dd')
     );
 
     // Get existing entry for the current date
@@ -76,59 +80,51 @@
       date: format(currentDate, "yyyy-MM-dd'T'HH:mm:ss'Z'") 
     });
 
-    // If we're viewing today's entry and data has changed, update the content
-    if (isToday(currentDate) && hasDataChanged) {
-      if (existingEntry) {
-        // Save the existing personal reflections before regenerating
-        const reflectionsMatch = existingEntry.content.match(/Personal reflections:\n([\s\S]*)/);
-        const existingReflections = reflectionsMatch ? reflectionsMatch[1].trim() : '';
-        
-        // Generate new content but preserve the reflections
-        journalContent = '';  // Clear content to force regeneration
-        generateDefaultContent();
-        
-        // Update the reflections section with existing content
-        if (existingReflections) {
-          journalContent = journalContent.replace(/Personal reflections:\n.*$/, `Personal reflections:\n${existingReflections}`);
-        }
-        
-        // Save the updated content
-        await saveJournalEntry();
-      } else {
-        generateDefaultContent();
+    // Only regenerate content if we're viewing today's entry and data has changed
+    if (isToday(currentDate)) {
+      if (hasDataChanged || !existingEntry) {
+        // If there's an existing entry, preserve its reflections
+        const existingReflections = existingEntry?.content?.match(/Personal reflections:\n([\s\S]*)/)?.[1]?.trim() || '';
+        generateDefaultContent(existingReflections);
+      } else if (!journalContent && existingEntry) {
+        // If we don't have content but there's an existing entry, use it
+        journalContent = existingEntry.content;
       }
     } else if (existingEntry) {
+      // For past entries, always show the saved content
       journalContent = existingEntry.content;
     } else {
-      generateDefaultContent();
+      // For new entries on past dates, generate fresh content
+      generateDefaultContent('');
     }
   }
 
-  function generateDefaultContent() {
-    // Start with the date
+  function generateDefaultContent(existingReflections = '') {
     let content = `${formattedDate}\n\n`;
-    
-    // Save any existing personal reflections
-    let personalReflections = '';
-    if (journalContent) {
-      const reflectionsMatch = journalContent.match(/Personal reflections:\n([\s\S]*)/);
-      if (reflectionsMatch && reflectionsMatch[1].trim()) {
-        personalReflections = reflectionsMatch[1];
-      }
-    }
-
-    // Generate the rest of the content
     const currentDateStr = formattedDate;
 
     // Get today's Pomodoro sessions
     const todaysPomodoroSessions = pomodoroSessions.filter(session => 
-      format(parseISO(session.completed_at), 'yyyy-MM-dd') === currentDateStr
+        format(parseISO(session.completed_at), 'yyyy-MM-dd') === currentDateStr
     );
     if (todaysPomodoroSessions.length > 0) {
       content += `Today's completed Pomodoro sessions:\n`;
       content += todaysPomodoroSessions.map(session => 
         `- ${session.session_name} (${session.work_minutes} minutes)`
       ).join('\n') + '\n\n';
+    }
+
+    // Add counter progress - exactly matching other trackers pattern
+    const todaysCounters = counters.filter(counter => 
+      format(parseISO(counter.updated_at), 'yyyy-MM-dd') === currentDateStr && 
+      counter.value > 0  // Move this condition into the filter like other trackers
+    );
+
+    if (todaysCounters.length > 0) {
+      content += `Progress tracked today:\n`;
+      content += todaysCounters
+        .map(counter => `- ${counter.name}: ${counter.value} times`)
+        .join('\n') + '\n\n';
     }
 
     // Goals created today
@@ -175,8 +171,8 @@
       content += updatedNotes.map(note => `- ${note.title}`).join('\n') + '\n\n';
     }
 
-    // Add personal reflections section
-    content += `Personal reflections:\n${personalReflections}`;
+    // Personal reflections should always be last
+    content += `Personal reflections:\n${existingReflections}`;
 
     journalContent = content;
   }
@@ -226,7 +222,9 @@
   .journal-page {
     max-width: 800px;
     margin: 0 auto;
-    padding: 20px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
   }
 
   .notebook {
@@ -236,6 +234,9 @@
     padding: 20px;
     box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
     margin-top: 20px;
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
   }
 
   textarea {
@@ -246,6 +247,8 @@
     line-height: 1.6;
     color: black;
     text-decoration: none;
+    flex-grow: 1;
+    resize: none;
   }
 
   textarea:focus {

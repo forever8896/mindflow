@@ -3,11 +3,13 @@
     import { flip } from 'svelte/animate';
     import { fade, fly } from 'svelte/transition';
     import { onMount } from 'svelte';
+    import { format, parseISO } from 'date-fns';
   
     interface TodoItem {
       id: number;
       text: string;
       completed: boolean;
+      created_at: string;
     }
   
     let newTodo = "";
@@ -90,6 +92,9 @@
           <span class="checkmark"></span>
         </label>
         <span class="todo-text">{todo.text}</span>
+        <span class="date-text" data-full-date={format(parseISO(todo.created_at), 'MMM d, yyyy h:mm a')}>
+          <span class="hover-date">{format(parseISO(todo.created_at), 'MMM d, yyyy h:mm a')}</span>
+        </span>
         <button class="remove-btn" on:click={() => removeTodo(todo.id)}>
           <span class="remove-icon">×</span>
         </button>
@@ -160,6 +165,7 @@
     border-radius: 4px;
     margin-bottom: 0.5rem;
     transition: all 0.3s;
+    position: relative;
   }
 
   .todo-item:hover {
@@ -259,5 +265,37 @@
     border-radius: 4px;
     padding: 0.5rem;
     margin-bottom: 1rem;
+  }
+
+  .date-text {
+    position: relative;
+    margin-right: 0.5rem;
+    display: flex;
+    align-items: center;
+    height: 100%;
+  }
+
+  .hover-date {
+    position: absolute;
+    right: 0;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.3s, visibility 0.3s;
+    color: black;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.8rem;
+    white-space: nowrap;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+
+  .todo-item:hover .hover-date {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .todo-item:hover .date-text {
+    color: var(--primary-color);
   }
 </style>
